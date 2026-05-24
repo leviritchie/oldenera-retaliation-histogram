@@ -14,7 +14,29 @@ This is a small BepInEx mod for **Heroes of Might and Magic: Olden Era**. It add
 
 The mod does not add factions, units, maps, campaign content, or Heroes III conversion content. It only changes the battle forecast display.
 
-## Install
+## Install With The EXE
+
+1. Download `DamageHistogramModInstaller.exe` from the latest GitHub release.
+2. Run it.
+3. When it asks for your game folder, paste your Olden Era install path.
+
+Example:
+
+```text
+C:\Program Files (x86)\Steam\steamapps\common\Heroes of Might and Magic Olden Era
+```
+
+The installer includes BepInEx for Windows x64 IL2CPP builds. If BepInEx is not already installed, the installer adds it first. If BepInEx is already installed, the installer leaves the existing BepInEx files alone and only installs the histogram mod.
+
+The histogram mod is copied to:
+
+```text
+BepInEx/plugins/DamageHistogramMod/
+```
+
+On a fresh BepInEx install, the first game launch can take longer while BepInEx prepares its files.
+
+## Manual Install
 
 1. Install BepInEx for the IL2CPP version of Olden Era.
 2. Download or build `DamageHistogramMod.dll`.
@@ -69,6 +91,49 @@ bin/Release/netstandard2.1/DamageHistogramMod.dll
 ```
 
 To build and deploy in one step, omit `-p:DeployPluginToGame=false`.
+
+## GitHub Release Builds
+
+This repo includes a GitHub Actions workflow that builds:
+
+- `DamageHistogramMod.zip`
+- `DamageHistogramModInstaller.exe`
+
+The installer bundles BepInEx by downloading the Windows x64 Unity IL2CPP package from the latest official BepInEx GitHub release during the workflow run.
+
+The mod DLL also needs Olden Era/BepInEx reference assemblies to compile. Those files are not included in this public repository. To let GitHub Actions build releases, add a repository secret named:
+
+```text
+OLDEN_ERA_REFERENCE_PACK_B64
+```
+
+That secret should be a base64-encoded zip with this shape:
+
+```text
+BepInEx/
+  core/
+    0Harmony.dll
+    BepInEx.Core.dll
+    BepInEx.Unity.IL2CPP.dll
+    Il2CppInterop.Common.dll
+    Il2CppInterop.Runtime.dll
+    ...
+  interop/
+    Hex.dll
+    Hex.Shared.dll
+    Hex.Sound.Runtime.dll
+    UnityEngine.CoreModule.dll
+    UnityEngine.UI.dll
+    ...
+```
+
+On Windows PowerShell, you can create the secret value from a local reference-pack zip like this:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("olden-era-reference-pack.zip")) | Set-Clipboard
+```
+
+The workflow runs on `v*` tags and can also be started manually from the Actions tab. Tag builds upload the zip and installer exe to the GitHub release.
 
 ## Notes
 

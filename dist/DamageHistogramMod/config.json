@@ -1,0 +1,13 @@
+{
+  "DamageHistograms": true,
+  "DamageHistogramConvolutionMaxUnits": 120,
+  "DamageHistogramChartWidthPx": 275,
+  "DamageHistogramChartHeightPx": 144,
+  "DamageHistogramGapPx": 12,
+  "DamageHistogramUseNativeFrameSprite": false,
+  "DamageHistogramPanelUgui": false,
+  "DamageHistogramPanelUguiLayoutPercent": 120,
+  "DamageHistogramPanelUguiEdgeFeatherPx": 40,
+  "DamageHistogramFontScalePercent": 100,
+  "DamageHistogramMinBars": 0
+}

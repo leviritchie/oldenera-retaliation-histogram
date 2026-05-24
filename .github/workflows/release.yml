@@ -1,0 +1,130 @@
+name: Build release
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_release:
+        description: "Upload assets to the GitHub release for the tag that triggered this run"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      OLDEN_ERA_REFERENCE_PACK_B64: ${{ secrets.OLDEN_ERA_REFERENCE_PACK_B64 }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore Olden Era reference pack
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OLDEN_ERA_REFERENCE_PACK_B64)) {
+            Write-Error "Missing repository secret OLDEN_ERA_REFERENCE_PACK_B64. It must be a base64-encoded zip containing BepInEx/core and BepInEx/interop reference DLLs from a local Olden Era+BepInEx install."
+          }
+
+          New-Item -ItemType Directory -Force -Path game-ref | Out-Null
+          [IO.File]::WriteAllBytes("olden-era-reference-pack.zip", [Convert]::FromBase64String($env:OLDEN_ERA_REFERENCE_PACK_B64))
+          Expand-Archive -LiteralPath olden-era-reference-pack.zip -DestinationPath game-ref -Force
+
+          $required = @(
+            "game-ref/BepInEx/core/0Harmony.dll",
+            "game-ref/BepInEx/core/BepInEx.Core.dll",
+            "game-ref/BepInEx/core/BepInEx.Unity.IL2CPP.dll",
+            "game-ref/BepInEx/interop/Hex.dll",
+            "game-ref/BepInEx/interop/UnityEngine.CoreModule.dll"
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path -LiteralPath $path)) {
+              Write-Error "Reference pack is missing required file: $path"
+            }
+          }
+
+      - name: Build mod DLL
+        shell: pwsh
+        run: |
+          dotnet build .\DamageHistogramMod.csproj `
+            -c Release `
+            "-p:GameRoot=$PWD\game-ref" `
+            -p:DeployPluginToGame=false `
+            --nologo
+
+      - name: Download BepInEx IL2CPP
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/BepInEx/BepInEx/releases/latest"
+          $asset = $release.assets |
+            Where-Object { $_.name -match "Unity\.IL2CPP-win-x64.*\.zip$" -or $_.name -match "UnityIL2CPP_x64.*\.zip$" } |
+            Select-Object -First 1
+
+          if ($null -eq $asset) {
+            Write-Error "Could not find a Windows x64 Unity IL2CPP BepInEx zip in the latest BepInEx release."
+          }
+
+          New-Item -ItemType Directory -Force -Path "release\bepinex" | Out-Null
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "release\bepinex\BepInEx.zip"
+          Write-Host "Downloaded $($asset.name)"
+
+      - name: Stage release payload
+        shell: pwsh
+        run: |
+          $payload = "release\DamageHistogramMod"
+          New-Item -ItemType Directory -Force -Path "$payload\histogram_icons" | Out-Null
+          Copy-Item -LiteralPath "bin\Release\netstandard2.1\DamageHistogramMod.dll" -Destination "$payload\DamageHistogramMod.dll" -Force
+          Copy-Item -LiteralPath "config.json" -Destination "$payload\config.json" -Force
+          Copy-Item -LiteralPath "histogram_icons\attack.png" -Destination "$payload\histogram_icons\attack.png" -Force
+          Copy-Item -LiteralPath "histogram_icons\retaliation.png" -Destination "$payload\histogram_icons\retaliation.png" -Force
+          Compress-Archive -Path "$payload\*" -DestinationPath "release\DamageHistogramMod.zip" -Force
+
+      - name: Build Windows installer exe
+        shell: pwsh
+        run: |
+          dotnet publish .\installer\DamageHistogramInstaller.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            "-p:PayloadDir=$PWD\release\DamageHistogramMod" `
+            "-p:BepInExZip=$PWD\release\bepinex\BepInEx.zip" `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o release `
+            --nologo
+
+          if (!(Test-Path -LiteralPath "release\DamageHistogramModInstaller.exe")) {
+            Write-Error "Installer exe was not produced."
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DamageHistogramMod-release
+          path: |
+            release/DamageHistogramMod.zip
+            release/DamageHistogramModInstaller.exe
+
+      - name: Upload assets to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/DamageHistogramMod.zip
+            release/DamageHistogramModInstaller.exe
