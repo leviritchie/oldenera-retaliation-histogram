@@ -1,71 +1,55 @@
-name: Build release
+name: release
 
 on:
-  workflow_dispatch:
-    inputs:
-      upload_release:
-        description: "Upload assets to the GitHub release for the tag that triggered this run"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
     runs-on: windows-latest
 
-    env:
-      OLDEN_ERA_REFERENCE_PACK_B64: ${{ secrets.OLDEN_ERA_REFERENCE_PACK_B64 }}
-
     steps:
-      - name: Check out source
+      - name: Check out
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "9.0.x"
 
-      - name: Restore Olden Era reference pack
+      - name: Verify release input checksum
         shell: pwsh
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:OLDEN_ERA_REFERENCE_PACK_B64)) {
-            Write-Error "Missing repository secret OLDEN_ERA_REFERENCE_PACK_B64. It must be a base64-encoded zip containing BepInEx/core and BepInEx/interop reference DLLs from a local Olden Era+BepInEx install."
+          $expected = (Get-Content release_inputs/damage_histogram_release_payload.zip.sha256).Split(" ")[0].Trim().ToLowerInvariant()
+          $actual = (Get-FileHash release_inputs/damage_histogram_release_payload.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "release input checksum mismatch: expected $expected actual $actual"
           }
 
-          New-Item -ItemType Directory -Force -Path game-ref | Out-Null
-          [IO.File]::WriteAllBytes("olden-era-reference-pack.zip", [Convert]::FromBase64String($env:OLDEN_ERA_REFERENCE_PACK_B64))
-          Expand-Archive -LiteralPath olden-era-reference-pack.zip -DestinationPath game-ref -Force
-
+      - name: Expand release input
+        shell: pwsh
+        run: |
+          Expand-Archive -LiteralPath release_inputs/damage_histogram_release_payload.zip -DestinationPath release -Force
           $required = @(
-            "game-ref/BepInEx/core/0Harmony.dll",
-            "game-ref/BepInEx/core/BepInEx.Core.dll",
-            "game-ref/BepInEx/core/BepInEx.Unity.IL2CPP.dll",
-            "game-ref/BepInEx/interop/Hex.dll",
-            "game-ref/BepInEx/interop/UnityEngine.CoreModule.dll"
+            "release/DamageHistogramMod/DamageHistogramMod.dll",
+            "release/DamageHistogramMod/config.json",
+            "release/DamageHistogramMod/histogram_icons/attack.png",
+            "release/DamageHistogramMod/histogram_icons/retaliation.png"
           )
           foreach ($path in $required) {
             if (!(Test-Path -LiteralPath $path)) {
-              Write-Error "Reference pack is missing required file: $path"
+              throw "Release input is missing required file: $path"
             }
           }
-
-      - name: Build mod DLL
-        shell: pwsh
-        run: |
-          dotnet build .\DamageHistogramMod.csproj `
-            -c Release `
-            "-p:GameRoot=$PWD\game-ref" `
-            -p:DeployPluginToGame=false `
-            --nologo
 
       - name: Download BepInEx IL2CPP
         shell: pwsh
@@ -83,16 +67,10 @@ jobs:
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "release\bepinex\BepInEx.zip"
           Write-Host "Downloaded $($asset.name)"
 
-      - name: Stage release payload
+      - name: Build mod zip
         shell: pwsh
         run: |
-          $payload = "release\DamageHistogramMod"
-          New-Item -ItemType Directory -Force -Path "$payload\histogram_icons" | Out-Null
-          Copy-Item -LiteralPath "bin\Release\netstandard2.1\DamageHistogramMod.dll" -Destination "$payload\DamageHistogramMod.dll" -Force
-          Copy-Item -LiteralPath "config.json" -Destination "$payload\config.json" -Force
-          Copy-Item -LiteralPath "histogram_icons\attack.png" -Destination "$payload\histogram_icons\attack.png" -Force
-          Copy-Item -LiteralPath "histogram_icons\retaliation.png" -Destination "$payload\histogram_icons\retaliation.png" -Force
-          Compress-Archive -Path "$payload\*" -DestinationPath "release\DamageHistogramMod.zip" -Force
+          Compress-Archive -Path "release\DamageHistogramMod\*" -DestinationPath "release\DamageHistogramMod.zip" -Force
 
       - name: Build Windows installer exe
         shell: pwsh
@@ -113,18 +91,40 @@ jobs:
             Write-Error "Installer exe was not produced."
           }
 
+      - name: Build checksums
+        shell: pwsh
+        run: |
+          foreach ($path in @("release\DamageHistogramMod.zip", "release\DamageHistogramModInstaller.exe")) {
+            $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([System.IO.Path]::GetFileName($path))" | Set-Content -Path "$path.sha256" -Encoding ASCII
+          }
+
+      - name: Attest package
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            release/DamageHistogramMod.zip
+            release/DamageHistogramMod.zip.sha256
+            release/DamageHistogramModInstaller.exe
+            release/DamageHistogramModInstaller.exe.sha256
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: DamageHistogramMod-release
           path: |
             release/DamageHistogramMod.zip
+            release/DamageHistogramMod.zip.sha256
             release/DamageHistogramModInstaller.exe
+            release/DamageHistogramModInstaller.exe.sha256
 
       - name: Upload assets to GitHub release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_release == 'true'
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/DamageHistogramMod.zip
+            release/DamageHistogramMod.zip.sha256
             release/DamageHistogramModInstaller.exe
+            release/DamageHistogramModInstaller.exe.sha256
+          generate_release_notes: true

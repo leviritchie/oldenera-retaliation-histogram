@@ -97,43 +97,33 @@ To build and deploy in one step, omit `-p:DeployPluginToGame=false`.
 This repo includes a GitHub Actions workflow that builds:
 
 - `DamageHistogramMod.zip`
+- `DamageHistogramMod.zip.sha256`
 - `DamageHistogramModInstaller.exe`
+- `DamageHistogramModInstaller.exe.sha256`
 
 The installer bundles BepInEx by downloading the Windows x64 Unity IL2CPP package from the latest official BepInEx GitHub release during the workflow run.
 
-The mod DLL also needs Olden Era/BepInEx reference assemblies to compile. Those files are not included in this public repository. To let GitHub Actions build releases, add a repository secret named:
+The workflow does not compile the mod DLL on GitHub. It follows the same release-input model as the larger Golden Era package: a prebuilt payload is checked in under `release_inputs/`, and the action verifies its checksum before wrapping it into the zip and installer exe.
 
 ```text
-OLDEN_ERA_REFERENCE_PACK_B64
+release_inputs/damage_histogram_release_payload.zip
+release_inputs/damage_histogram_release_payload.zip.sha256
 ```
 
-That secret should be a base64-encoded zip with this shape:
+That zip contains:
 
 ```text
-BepInEx/
-  core/
-    0Harmony.dll
-    BepInEx.Core.dll
-    BepInEx.Unity.IL2CPP.dll
-    Il2CppInterop.Common.dll
-    Il2CppInterop.Runtime.dll
-    ...
-  interop/
-    Hex.dll
-    Hex.Shared.dll
-    Hex.Sound.Runtime.dll
-    UnityEngine.CoreModule.dll
-    UnityEngine.UI.dll
-    ...
+DamageHistogramMod/
+  DamageHistogramMod.dll
+  config.json
+  histogram_icons/
+    attack.png
+    retaliation.png
 ```
 
-On Windows PowerShell, you can create the secret value from a local reference-pack zip like this:
+The source is still included for transparency and local development. Release builds use the checked-in payload so GitHub Actions does not need private Olden Era interop assemblies.
 
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("olden-era-reference-pack.zip")) | Set-Clipboard
-```
-
-The workflow runs on `v*` tags and can also be started manually from the Actions tab. Tag builds upload the zip and installer exe to the GitHub release.
+The workflow runs on `v*` tags and can also be started manually from the Actions tab. Tag builds upload the zip, installer exe, and checksum files to the GitHub release.
 
 ## Notes
 
