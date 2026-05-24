@@ -101,9 +101,7 @@ This repo includes a GitHub Actions workflow that builds:
 - `DamageHistogramModInstaller.exe`
 - `DamageHistogramModInstaller.exe.sha256`
 
-The installer bundles BepInEx by downloading the Windows x64 Unity IL2CPP package from the latest official BepInEx GitHub release during the workflow run.
-
-The workflow does not compile the mod DLL on GitHub. It follows the same release-input model as the larger Golden Era package: a prebuilt payload is checked in under `release_inputs/`, and the action verifies its checksum before wrapping it into the zip and installer exe.
+The workflow follows the same release-input model as the larger Golden Era package: a prebuilt payload is checked in under `release_inputs/`, and the action verifies its checksum before wrapping it into the zip and installer exe. It does not compile the mod DLL on GitHub and it does not download BepInEx during the workflow.
 
 ```text
 release_inputs/damage_histogram_release_payload.zip
@@ -113,6 +111,7 @@ release_inputs/damage_histogram_release_payload.zip.sha256
 That zip contains:
 
 ```text
+BepInExBootstrap.zip
 DamageHistogramMod/
   DamageHistogramMod.dll
   config.json
@@ -121,7 +120,7 @@ DamageHistogramMod/
     retaliation.png
 ```
 
-The source is still included for transparency and local development. Release builds use the checked-in payload so GitHub Actions does not need private Olden Era interop assemblies.
+`BepInExBootstrap.zip` contains the BepInEx/Doorstop bootstrap files used by the installer when a player does not already have BepInEx installed. The source is still included for transparency and local development. Release builds use the checked-in payload so GitHub Actions does not need private Olden Era interop assemblies.
 
 The workflow runs on `v*` tags and can also be started manually from the Actions tab. Tag builds upload the zip, installer exe, and checksum files to the GitHub release.
 

@@ -43,29 +43,14 @@ jobs:
             "release/DamageHistogramMod/DamageHistogramMod.dll",
             "release/DamageHistogramMod/config.json",
             "release/DamageHistogramMod/histogram_icons/attack.png",
-            "release/DamageHistogramMod/histogram_icons/retaliation.png"
+            "release/DamageHistogramMod/histogram_icons/retaliation.png",
+            "release/BepInExBootstrap.zip"
           )
           foreach ($path in $required) {
             if (!(Test-Path -LiteralPath $path)) {
               throw "Release input is missing required file: $path"
             }
           }
-
-      - name: Download BepInEx IL2CPP
-        shell: pwsh
-        run: |
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/BepInEx/BepInEx/releases/latest"
-          $asset = $release.assets |
-            Where-Object { $_.name -match "Unity\.IL2CPP-win-x64.*\.zip$" -or $_.name -match "UnityIL2CPP_x64.*\.zip$" } |
-            Select-Object -First 1
-
-          if ($null -eq $asset) {
-            Write-Error "Could not find a Windows x64 Unity IL2CPP BepInEx zip in the latest BepInEx release."
-          }
-
-          New-Item -ItemType Directory -Force -Path "release\bepinex" | Out-Null
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "release\bepinex\BepInEx.zip"
-          Write-Host "Downloaded $($asset.name)"
 
       - name: Build mod zip
         shell: pwsh
@@ -80,7 +65,7 @@ jobs:
             -r win-x64 `
             --self-contained true `
             "-p:PayloadDir=$PWD\release\DamageHistogramMod" `
-            "-p:BepInExZip=$PWD\release\bepinex\BepInEx.zip" `
+            "-p:BepInExZip=$PWD\release\BepInExBootstrap.zip" `
             -p:PublishSingleFile=true `
             -p:EnableCompressionInSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
